@@ -51,7 +51,7 @@ function handler(req, res) {
     // check for a search query
     if(req.url.indexOf(m.searchUrl)!==-1) {
       m.url = m.searchUrl;
-      m.search = req.url.substring(m.searchUrl.length,255).replace('?text=','');
+      m.filter = req.url.substring(m.searchUrl.length,255).replace('?text=','');
     }
     else {
       m.url = req.url;
@@ -64,7 +64,7 @@ function handler(req, res) {
     }
 
     // process request
-    switch(url) {
+    switch(m.url) {
       case m.homeUrl:
         switch(req.method) {
           case 'GET':
@@ -133,20 +133,7 @@ function handler(req, res) {
   function sendList() {
     var msg;
 
-    msg = {};
-    msg.collection = {};
-    msg.collection.version="1.0";
-    msg.collection.href=m.url;
-
-    msg.collection.links = [];
-    msg.collection.links.push({rel:"home",href:m.listUrl});
-
-    if(g.list.length>0) {
-      msg.collection.queries = [];
-      msg.collection.queries.push({rel:"search",href:m.filterUrl,name:"Search"});
-    }
-
-    msg.collection = loadItems(g.list);
+    msg = makeCj(g.list);
     
     res.writeHead(200, 'OK', m.appCj);
     res.end(JSON.stringify(msg,null,2));
@@ -159,25 +146,16 @@ function handler(req, res) {
 
   */
   function searchList() {
-    var search, i, x, msg;
+    var list, i, x, msg;
 
-    search = [];
+    list = [];
     for(i=0,x=g.list.length;i<x;i++) {
-      if(g.list[i].text.indexOf(m.search)!==-1) {
-        search.push(g.list[i]);
+      if(g.list[i].text.indexOf(m.filter)!==-1) {
+        list.push(g.list[i]);
       }
     }
 
-    msg = {};
-    msg.links =[];
-    msg.collection = search;
-
-    msg.links.push(m.addControl);
-    msg.links.push(m.listControl);
-
-    if(msg.collection.length>0) {
-      msg.links.push(m.searchControl);
-    }
+    msg = makeCj(list);
 
     res.writeHead(200, 'OK', m.appJson);
     res.end(JSON.stringify(msg, null, 2));
@@ -250,6 +228,44 @@ function handler(req, res) {
     res.end();
   }
 
+  /* compose Cj body */
+  function makeCj(list, error) {
+    var msg, item, i, x;
+
+    msg = {};
+    msg.collection = {};
+    msg.collection.version="1.0";
+    msg.collection.href=m.url;
+
+    msg.collection.links = [];
+    msg.collection.links.push({rel:"home",href:m.listUrl});
+
+    if(list.length>0) {
+      msg.collection.queries = [];
+      msg.collection.queries.push({rel:"search",href:m.filterUrl,name:"Search"});
+    }
+
+    msg.collection.items = [];
+    for(i=0,x=list.length;i<x;i++) {
+      item = {};
+      item.href = m.listUrl + i;
+      item.data = [];
+      item.data.push({name:"id", value:list[i].id, prompt:"ID"});
+      item.data.push({name:"text", value:list[i].text, prompt:"Text"});
+      msg.collection.items.push(item);
+    }
+
+    if(error) {
+      msg.collection.error = error;
+    }
+    else {
+      msg.collection.template = {};
+      msg.collection.template.data = [];
+      msg.collection.template.data.push({name:"text",value:"",prompt:"Text"})
+    }
+    return msg;
+
+  }
   /* show html page */
   function showHtml() {
     fs.readFile('index.html', 'ascii', sendHtml);
@@ -279,9 +295,18 @@ function handler(req, res) {
   }
 
   /* show error page */
-  function showError(status, msg) {
-    res.writeHead(status, msg, m.appJson);
-    res.end(m.errorMessage.replace('{@status}', status).replace('{@msg}', msg));
+  function showError(status, text) {
+    var msg, error;
+    
+    error = {};
+    error.title = text;
+    error.code = status;
+    error.message = "Error handling request, please try again.";
+    
+    msg = makeCj([],error);
+
+    res.writeHead(status, text, m.appJson);
+    res.end(JSON.stringify(msg,null,2));
   }
 }
 
